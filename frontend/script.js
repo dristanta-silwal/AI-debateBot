@@ -1,4 +1,21 @@
-const API_BASE = 'http://localhost:8000';
+// Function to determine the API base URL based on the environment
+function getApiBase() {
+    const meta = document.querySelector('meta[name="api-base"]');
+    const fromMeta = meta && meta.content ? meta.content.trim() : "";
+    if (fromMeta) return fromMeta; // production override
+    
+    // local dev fallback
+    if (
+      location.hostname === "localhost" ||
+      location.hostname === "127.0.0.1" ||
+      location.hostname === "[::1]"
+    ) {
+        return "http://localhost:8000";
+    }
+    return ""; // same-origin (if you ever serve both together)
+}
+
+const API_BASE = getApiBase();
 const chat = document.getElementById('chat');
 const startModal = document.getElementById('startModal');
 const inputSection = document.getElementById('input-section');
