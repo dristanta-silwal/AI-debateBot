@@ -40,9 +40,10 @@
             <div class="flex items-center gap-3">
                 <div class="w-10 h-10 rounded-full bg-[#02182B] flex items-center justify-center text-white text-lg font-bold">D</div>
                 <h1 class="text-xl font-bold">DebateBot</h1>
-                <span id="botSideBadge" class="text-xs px-2 py-1 rounded-full bg-[#02182B]/10 text-[#02182B] font-semibold">Side: —</span>
+                <span id="botSideBadge" class="text-xs px-2 py-1 rounded-full bg-[#02182B]/10 text-[#02182B] font-semibold">Side: PRO</span>
             </div>
             <div class="flex items-center gap-2">
+                <span id="messageCounter" class="text-sm px-3 py-1 rounded-full bg-slate-200 text-slate-700">Messages: 20</span>
                 <button id="startNewBtn" class="bg-[#52534B] hover:bg-[#52534B]/90 text-white px-4 py-2 rounded-lg text-sm font-semibold transition">
                     Start New Debate
                 </button>
@@ -63,7 +64,7 @@
                     </select>
                 </div>
                 <div class="mt-4 flex gap-3 justify-center">
-                    <button id="startBtn" class="bg-[#02182B] hover:bg-[#02182B]/90 text-white px-6 py-2 rounded-lg font-semibold transition">Start Debate</button>
+                    <button id="startBtn" class="bg-[#02182B] hover:bg-[#02182B]/90 text-white px-6 py-2 rounded-lg font-semibold transition  disabled:opacity-50 disabled:cursor-not-allowed">Start Debate</button>
                 </div>
                 <p id="startError" class="text-sm text-red-600 mt-2 text-center hidden"></p>
             </div>
@@ -75,6 +76,7 @@
                 <p class="mt-2 text-lg font-bold">Welcome to DebateBot!</p>
                 <p class="mt-2">Ready to debate with AI?</p>
                 <p class="mt-2">Press "Start New Debate" to begin.</p>
+                <p class="mt-10 text-red-600 text-4xl">You only got 20 messages per day.</p>
             </div>
         </section>
 
@@ -83,7 +85,7 @@
                 <div class="flex items-end gap-3 bg-white rounded-2xl shadow-md p-3 border border-slate-200">
                     <textarea id="humanInput" class="w-full border-none rounded-xl px-3 py-2 outline-none resize-none focus:ring-0 text-base" rows="3"
                         placeholder="Your 120–180 word turn... Include [SWITCH] to make DebateBot switch sides."></textarea>
-                    <button id="sendBtn" class="shrink-0 bg-[#02182B] text-white p-3 rounded-lg opacity-50 cursor-not-allowed transition-opacity disabled:opacity-50" disabled>
+                    <button id="sendBtn" class="shrink-0 bg-[#02182B] text-white p-3 rounded-lg opacity-50 cursor-not-allowed transition-opacity disabled:opacity-50 disabled:cursor-not-allowed" disabled>
                         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-6 h-6"><path d="m22 2-7 20-4-9-9-4 20-7z"/><path d="M22 2 11 13"/></svg>
                     </button>
                 </div>
@@ -103,214 +105,8 @@
         </div>
     </template>
 
-    <script>
-        const API_BASE = 'http://localhost:8000';
-        const chat = document.getElementById('chat');
-        const startModal = document.getElementById('startModal');
-        const inputSection = document.getElementById('input-section');
-        const welcomeMessage = document.getElementById('welcome-message');
-        const startBtn = document.getElementById('startBtn');
-        const startNewBtn = document.getElementById('startNewBtn');
-        const topicInput = document.getElementById('topicInput');
-        const sideSelect = document.getElementById('sideSelect');
-        const startError = document.getElementById('startError');
-        const humanInput = document.getElementById('humanInput');
-        const sendBtn = document.getElementById('sendBtn');
-        const sendError = document.getElementById('sendError');
-        const lengthHint = document.getElementById('lengthHint');
-        const turnSpan = document.getElementById('turnSpan');
-        const botSideBadge = document.getElementById('botSideBadge');
+    <script src="script.js"></script>
 
-        let sessionId = null;
-        let state = { history: [], botSide: 'PRO' };
-
-        function wordCount(s) { return (s.trim().match(/\b\w+\b/g) || []).length; }
-        function updateLengthHint() {
-            const n = wordCount(humanInput.value);
-            lengthHint.textContent = `${n} words (need 120–180)`;
-            if (n < 120 || n > 180) {
-                lengthHint.className = "text-sm text-red-600 font-semibold";
-                sendBtn.disabled = true;
-                sendBtn.classList.add('opacity-50', 'cursor-not-allowed');
-            } else {
-                lengthHint.className = "text-sm text-slate-600";
-                sendBtn.disabled = false;
-                sendBtn.classList.remove('opacity-50', 'cursor-not-allowed');
-            }
-        }
-        humanInput.addEventListener('input', updateLengthHint);
-
-        function renderMessageHTML(raw) {
-            let html = raw
-                .replace(/&/g, "&amp;")
-                .replace(/</g, "&lt;")
-                .replace(/>/g, "&gt;");
-            html = html.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
-            html = html.replace(/\r\n/g, "\n").replace(/\n{2,}/g, "<br><br>").replace(/\n/g, "<br>");
-            const li = [];
-            const re = /(?:^|\s)(\d\))\s([^]*?)(?=\s\d\)\s|$)/g;
-            let m;
-            while ((m = re.exec(raw)) !== null) {
-                li.push(m[2].trim());
-            }
-            if (li.length >= 2) {
-                const list = '<ul class="list-disc pl-6 mt-2">' + li.map(s => `<li>${s}</li>`).join("") + "</ul>";
-                html = html.replace(/(?:^|\s)\d\)\s[^]*?(?=\s\d\)\s|$)/g, "").trim();
-                html = (html ? html + " " : "") + list;
-            }
-            return html;
-        }
-
-        function showTypingIndicator() {
-            const typingIndicator = document.createElement('div');
-            typingIndicator.id = 'typing-indicator';
-            typingIndicator.className = 'flex items-center gap-2 p-3 bg-slate-100 rounded-2xl w-fit';
-            typingIndicator.innerHTML = `
-                <div class="dot-typing bg-[#02182B] w-2 h-2 rounded-full animate-bounce"></div>
-                <div class="dot-typing bg-[#02182B] w-2 h-2 rounded-full animate-bounce" style="animation-delay: 0.2s"></div>
-                <div class="dot-typing bg-[#02182B] w-2 h-2 rounded-full animate-bounce" style="animation-delay: 0.4s"></div>
-            `;
-            chat.appendChild(typingIndicator);
-            window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
-        }
-
-        function hideTypingIndicator() {
-            const indicator = document.getElementById('typing-indicator');
-            if (indicator) {
-                indicator.remove();
-            }
-        }
-
-        function addMessage(role, text) {
-            const tpl = document.getElementById('msgTemplate').content.cloneNode(true);
-            const container = tpl.firstElementChild;
-            const avatar = tpl.querySelector('.avatar');
-            const bubble = tpl.querySelector('.msg-bubble');
-            bubble.innerHTML = renderMessageHTML(text);
-            if (role === 'bot') {
-                container.classList.add('justify-start');
-                avatar.textContent = 'D'; avatar.classList.add('bg-[#02182B]', 'text-white');
-                bubble.classList.add('bg-slate-100', 'border-slate-200', 'bubble-bot');
-            } else {
-                container.classList.add('justify-end');
-                avatar.textContent = 'U'; avatar.classList.add('bg-slate-700', 'text-white');
-                bubble.classList.add('bg-[#02182B]/5', 'border-[#02182B]/20', 'bubble-user');
-            }
-            chat.appendChild(tpl);
-            chat.scrollTop = chat.scrollHeight;
-        }
-
-        function updateBotSide(newSide) {
-            state.botSide = newSide;
-            botSideBadge.textContent = `Side: ${newSide}`;
-        }
-        startModal.addEventListener('click', (e) => {
-            if (e.target.id === 'startModal') {
-                startModal.classList.add('hidden');
-            }
-        });
-
-        startBtn.addEventListener('click', async () => {
-            startError.classList.add('hidden');
-            const topic = topicInput.value.trim();
-            const bot_side = sideSelect.value;
-            if (!topic) { startError.textContent = 'Topic is required.'; startError.classList.remove('hidden'); return; }
-
-            startBtn.disabled = true;
-            startBtn.textContent = 'Starting...';
-
-            startModal.classList.add('hidden');
-            welcomeMessage.classList.add('hidden');
-            inputSection.classList.remove('hidden');
-            showTypingIndicator();
-
-            try {
-                const res = await fetch(`${API_BASE}/api/debate/start`, {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ topic, bot_side })
-                });
-                const data = await res.json();
-                if (!res.ok) {
-                    startError.textContent = data.detail;
-                    startError.classList.remove('hidden');
-                    return;
-                }
-                sessionId = data.session_id;
-                state = { topic, bot_side, history: [{ role: 'bot', message: data.bot_message }] };
-                chat.innerHTML = '';
-                addMessage('bot', data.bot_message);
-                updateBotSide(bot_side);
-            } catch (error) {
-                console.error("Failed to start debate:", error);
-                startError.textContent = "Failed to connect to the server. Please try again.";
-                startError.classList.remove('hidden');
-            } finally {
-                startBtn.disabled = false;
-                startBtn.textContent = 'Start Debate';
-                hideTypingIndicator();
-            }
-        });
-
-        sendBtn.addEventListener('click', async () => {
-            sendError.classList.add('hidden');
-            if (!sessionId) { sendError.textContent = 'Start a debate first.'; sendError.classList.remove('hidden'); return; }
-            const msg = humanInput.value.trim();
-            const n = wordCount(msg);
-            if (n < 120 || n > 180) { sendError.textContent = 'Message must be 120–180 words.'; sendError.classList.remove('hidden'); return; }
-            
-            const isSwitchRequested = msg.toLowerCase().includes('[switch]');
-            addMessage('user', msg);
-            state.history.push({ role: 'user', message: msg });
-            humanInput.value = '';
-            updateLengthHint();
-
-            sendBtn.disabled = true;
-            showTypingIndicator();
-
-            try {
-                const res = await fetch(`${API_BASE}/api/debate/turn`, {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ session_id: sessionId, human_message: msg })
-                });
-                const data = await res.json();
-                if (!res.ok) {
-                    sendError.textContent = data.detail;
-                    sendError.classList.remove('hidden');
-                    return;
-                }
-
-                if (isSwitchRequested) {
-                    const newSide = state.botSide === 'PRO' ? 'CON' : 'PRO';
-                    updateBotSide(newSide);
-                }
-
-                addMessage('bot', data.bot_message);
-                state.history.push({ role: 'bot', message: data.bot_message });
-            } catch (error) {
-                console.error("Failed to take turn:", error);
-                sendError.textContent = "Failed to connect to the server. Please try again.";
-                sendError.classList.remove('hidden');
-            } finally {
-                sendBtn.disabled = false;
-                hideTypingIndicator();
-            }
-        });
-
-        startNewBtn.addEventListener('click', () => {
-            sessionId = null;
-            state = { history: [], botSide: 'PRO' };
-            chat.innerHTML = '';
-            topicInput.value = '';
-            humanInput.value = '';
-            updateLengthHint();
-            welcomeMessage.classList.remove('hidden');
-            inputSection.classList.add('hidden');
-            updateBotSide('—');
-            startError.classList.add('hidden');
-            sendError.classList.add('hidden');
-            startModal.classList.remove('hidden');
-        });
-    </script>
 </body>
 
 </html>
