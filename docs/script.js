@@ -1,21 +1,48 @@
-// Function to determine the API base URL based on the environment
 function getApiBase() {
     const meta = document.querySelector('meta[name="api-base"]');
     const fromMeta = meta && meta.content ? meta.content.trim() : "";
-    if (fromMeta) return fromMeta; // production override
-    
-    // local dev fallback
+    if (fromMeta) return fromMeta;
     if (
-      location.hostname === "localhost" ||
-      location.hostname === "127.0.0.1" ||
-      location.hostname === "[::1]"
+        location.hostname === "localhost" ||
+        location.hostname === "127.0.0.1" ||
+        location.hostname === "[::1]"
     ) {
         return "http://localhost:8000";
     }
-    return ""; // same-origin (if you ever serve both together)
+    return "";
 }
 
 const API_BASE = getApiBase();
+function createWakeBanner(text) {
+    const banner = document.createElement('div');
+    banner.id = 'wakeBanner';
+    banner.className = 'fixed top-3 left-1/2 -translate-x-1/2 bg-amber-100 text-amber-900 px-4 py-2 rounded-lg shadow z-50';
+    banner.textContent = text;
+    return banner;
+}
+
+async function wakeBackend(attempts = 3) {
+    if (!API_BASE) return true;
+    const url = `${API_BASE}/healthz?ts=${Date.now()}`;
+    for (let i = 0; i < attempts; i++) {
+        try {
+            const ctrl = new AbortController();
+            const t = setTimeout(() => ctrl.abort(), 10000);
+            const res = await fetch(url, {
+                method: 'GET',
+                mode: 'cors',
+                cache: 'no-store',
+                signal: ctrl.signal,
+                keepalive: true,
+            });
+            clearTimeout(t);
+            if (res.ok || res.status === 204) return true;
+        } catch (_) {
+        }
+        await new Promise(r => setTimeout(r, 1000 * i));
+    }
+    return false;
+}
 const chat = document.getElementById('chat');
 const startModal = document.getElementById('startModal');
 const inputSection = document.getElementById('input-section');
@@ -265,6 +292,16 @@ startNewBtn.addEventListener('click', () => {
     startModal.classList.remove('hidden');
 });
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
+    const banner = createWakeBanner('Warming the server…');
+    document.body.appendChild(banner);
+    const ok = await wakeBackend(3);
+    if (ok) {
+        banner.textContent = 'Server ready!';
+        setTimeout(() => banner.remove(), 1200);
+    } else {
+        banner.textContent = 'Server is waking… please try again shortly.';
+        setTimeout(() => banner.remove(), 3000);
+    }
     updateBotSide(sideSelect.value);
 });

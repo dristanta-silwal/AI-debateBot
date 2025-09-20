@@ -1,17 +1,17 @@
 import uuid
 from typing import Dict, List
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from .schemas import StartDebateRequest, StartResponse, TurnRequest, TurnResponse, Message, Validations
-from .prompts import (
+from backend.schemas import StartDebateRequest, StartResponse, TurnRequest, TurnResponse, Message, Validations
+from backend.prompts import (
     DEBATEBOT_SYSTEM_INSTRUCTIONS,
     OPENING_INSTRUCTION_TEMPLATE,
     TURN_INSTRUCTION_TEMPLATE,
     HISTORY_LINE_USER,
     HISTORY_LINE_BOT,
 )
-from .utils import call_gemini, logger
-from .rate_limiter import RateLimiter
+from backend.utils import call_gemini, logger
+from backend.rate_limiter import RateLimiter
 
 app = FastAPI(title="DebateBot API", version="0.1.0")
 
@@ -24,6 +24,11 @@ app.add_middleware(
 
 sessions: Dict[str, Dict] = {}
 rate_limiter = RateLimiter(capacity=20, refill_seconds=300)
+
+
+@app.get("/healthz")
+async def healthz():
+    return Response(status_code=204)
 
 def build_history_text(history: List[Message]) -> str:
     lines = [
